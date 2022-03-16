@@ -19,6 +19,7 @@ from PIL import Image as pimg
 class CMDStyleTransfer:
 
     def __init__(self, content_img, style_img, image_size=(512, 512), lr=0.1):
+        print(f"running CMDStyleTransfer with cont: {content_img}, style: {style_img}, image_size: {image_size}, lr: {lr}")
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.image_size = image_size
         self.mean = [0.485, 0.456, 0.406]
@@ -76,7 +77,7 @@ class CMDStyleTransfer:
             loss_s = torch.tensor(0.0).cuda()
             for i, (conv_o, conv_s) in enumerate(zip(outputs, convs_s)):
                 loss_s += vgg_weights[i] * s_losses[i](torch.sigmoid(conv_o))
-            loss = (1 - alpha) * loss_c + alpha * loss_s
+            loss = (1 - alpha) * loss_c + alpha * 1 * loss_s
             # Optimize
             self.optim.zero_grad()
             loss.backward()
@@ -88,10 +89,13 @@ class CMDStyleTransfer:
                 continue
             else:
                 moving_loss = 0.99*moving_loss + 0.01*new_loss
+
+            currLoss = abs(moving_loss - new_loss)
             if iteration % 50 == 0:
-                print("Current iteration is {} and the loss is {}".format(iteration, moving_loss))
-            if abs(moving_loss - new_loss) <= epsilon:
-                print("Delta smaller than eps.")
+                print("Current iteration is {} and the loss is {}, move - new: {}".format(iteration, moving_loss, currLoss))
+           
+            if currLoss <= epsilon:
+                print(f"Delta smaller than eps({epsilon}). {currLoss}")
                 print("Current iteration is {} and the loss is {}".format(iteration, moving_loss))
                 break
         difference = timeit.default_timer() - starttime
@@ -107,15 +111,16 @@ class CMDStyleTransfer:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--epsilon', type=float, default=0.001, help='Delta difference stopping criterion')
+    parser.add_argument('--epsilon', type=float, default=0.0001, help='Delta difference stopping criterion')
     parser.add_argument('--max_iter', type=int, default=1000, help='Maximum iteration if delta not reached')
-    parser.add_argument('--alpha', type=float, default=1.0, help='Style and content loss weighting.'
+    parser.add_argument('--alpha', type=float, default=0.01, help='Style and content loss weighting.'
                                                                  'Needs to be high since we are starting with content'
                                                                  'image.')
     parser.add_argument('--lr', type=float, default=0.1, help='Learning rate used during optimization')
     parser.add_argument('--c_img', type=str, default='./images/content/pablo_picasso.jpg', help='Path to content image')
     parser.add_argument('--s_img', type=str, default='./images/style/picasso.jpg', help='Path to style image')
     parser.add_argument('--im_size', type=int, default=720, nargs='+', help='Image size. Either single int or tuple of int')
+    parser.add_argument('--out_path', type=str, default="./images")
     args = parser.parse_args()
 
     vgg_weights = [1e3/n**2 for n in [64, 128, 256, 512, 512]]
@@ -131,13 +136,13 @@ if __name__ == "__main__":
     stylized_image = cmd_transfer.get_current_image()
 
     # Plot result
-    if False:
-        fig = plt.figure(figsize=(10, 10), facecolor='white')
-        ax = plt.Axes(fig, [0., 0., 1., 1.])
-        plt.axis('off')
-        plt.title('Stylized image')
-        plt.imshow(stylized_image)
-        plt.show()
-    else:
-        saveName = os.path.splitext(os.path.basename(args.c_img))[0] + '-' + os.path.splitext(os.path.basename(args.s_img))[0] + ".png"
-        stylized_image.save(saveName,"PNG")
+   # if False:
+    fig = plt.figure(figsize=(10, 10), facecolor='white')
+    ax = plt.Axes(fig, [0., 0., 1., 1.])
+    plt.axis('off')
+    plt.title('Stylized image')
+    plt.imshow(stylized_image)
+    plt.show()
+   # else:
+    saveName = os.path.join(args.out_path ,os.path.splitext(os.path.basename(args.c_img))[0] + '-' + os.path.splitext(os.path.basename(args.s_img))[0] + ".png")
+    stylized_image.save(saveName,"PNG")
